@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Face Recognition Attendance</title>
+</head>
+<body>
+    <h1>Face Recognition Attendance</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <button id="snap">Capture</button>
+    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const snap = document.getElementById('snap');
+        const context = canvas.getContext('2d');
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error("Error accessing webcam: " + err);
+            });
+
+        snap.addEventListener('click', () => {
+            context.drawImage(video, 0, 0, 640, 480);
+            const dataUrl = canvas.toDataURL('image/png');
+            fetch('api/v1/capture/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: 'image=' + encodeURIComponent(dataUrl)
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.status + (data.name ? ": " + data.name : ""));
+            });
+        });
+    </script>
+</body>
+</html>
