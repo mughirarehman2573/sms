@@ -159,3 +159,10 @@ class LeaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = Leave
         exclude = ['is_deleted', 'created_at', 'updated_at']
+
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'name', 'user_type', 'face_encoding']

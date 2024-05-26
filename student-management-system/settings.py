@@ -46,7 +46,8 @@ INSTALLED_APPS += [
     'allauth.socialaccount',
     'django_rest_passwordreset',
     'drf_yasg',
-    'rest_framework_swagger'
+    'rest_framework_swagger',
+    'corsheaders'
 ]
 
 AUTH_USER_MODEL = 'users.User'
@@ -60,6 +61,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
 ]
 
 ROOT_URLCONF = 'student-management-system.urls'
@@ -172,3 +174,34 @@ DJANGO_REST_PASSWORDRESET_TOKEN_CONFIG = {
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+
+CORS_ALLOW_METHODS = (
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+)
+
+
+CORS_ALLOW_HEADERS = (
+    "accept",
+    "authorization",
+    "content-type",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+)
+
+
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://ac28-124-29-214-61.ngrok-free.app"# Add your frontend URL here
+]
+
+
+CORS_ALLOW_ALL_ORIGINS: True

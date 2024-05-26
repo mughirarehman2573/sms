@@ -2,6 +2,8 @@ import math
 import base64
 import face_recognition
 from io import BytesIO
+
+import requests
 from PIL import Image
 import numpy as np
 from django.shortcuts import render
@@ -20,7 +22,7 @@ from home.api.v1.serializers import (SignupSerializer, StudentSerializer,
                                      CampusSerializer, DepartmentSerializer,
                                      ProgramSerializer, CourseSerializer, EnrollmentSerializer,
                                      AttendanceSerializer, AttendanceLogSerializer, DisciplineSerializer,
-                                     LeaveTypeSerializer, LeaveSerializer)
+                                     LeaveTypeSerializer, LeaveSerializer, UserSerializer)
 from home.models import Student, StudentProfile, University, Campus, Department, Program, Course, Enrollment, \
     Attendance, AttendanceLog, Discipline, LeaveType, Leave
 from users.models import User
@@ -44,7 +46,8 @@ class LoginViewSet(ViewSet):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         token, created = Token.objects.get_or_create(user=user)
-        return Response({"token": token.key})
+        user_serializer = UserSerializer(user)
+        return Response({"token": token.key, "user": user_serializer.data})
 
 
 class StudentViewSet(ModelViewSet):
@@ -108,6 +111,7 @@ def haversine_(l1, lon1, lat2, lon2):
 
     return R * c
 
+
 class AttendanceViewSet(ModelViewSet):
     queryset = Attendance.objects.all()
     serializer_class = AttendanceSerializer
@@ -133,7 +137,7 @@ class AttendanceViewSet(ModelViewSet):
 
         distance = haversine_(student_latitude, student_longitude, float(campus.latitude), float(campus.longitude))
 
-        if distance <= 100:
+        if distance <= 500:
             attendance = Attendance.objects.create(student=student, latitude=student_latitude,
                                                    longitude=student_longitude, duration=0)
             AttendanceLog.objects.create(status='Punch In', attendance=attendance)
@@ -141,8 +145,6 @@ class AttendanceViewSet(ModelViewSet):
         else:
             return Response({'message': 'You are not within the 100 meters radius of the campus.'},
                             status=status.HTTP_400_BAD_REQUEST)
-
-
 
 
 class AttendanceLogViewSet(ModelViewSet):
@@ -166,20 +168,37 @@ class LeaveTypeViewSet(ModelViewSet):
 class LeaveViewSet(ModelViewSet):
     queryset = Leave.objects.all()
     serializer_class = LeaveSerializer
+
+
+class LeaveApprovalViewSet(ModelViewSet):
+    queryset = Leave.objects.all()
+    serializer_class = LeaveSerializer
     permission_classes = [TeacherBasedPermission]
+    http_method_names = ['get', 'patch', 'retrieve']
 
 
 def index(request):
     return render(request, 'index.html')
 
 
+def get_current_location():
+    try:
+        response = requests.get('http://ipinfo.io/json')
+        data = response.json()
+        location = data['loc'].split(',')
+        latitude = float(location[0])
+        longitude = float(location[1])
+        return latitude, longitude
+    except Exception as e:
+        print(f"Error: {e}")
+        return None, None
+
+
 def capture_image(request):
     if request.method == 'POST':
         image_data = request.POST.get('image')
         image_data = base64.b64decode(image_data.split(',')[1])
-
-        # Load the image from the base64 data
-        image = Image.open(BytesIO(image_data))
+        image = Image.open(BytesIO(image_data)).convert('RGB')
         image_np = np.array(image)
         face_encodings = face_recognition.face_encodings(image_np)
 
@@ -187,16 +206,43 @@ def capture_image(request):
             face_encoding = face_encodings[0]
 
             for user in User.objects.all():
-                user_image = face_recognition.load_image_file(user.image.path)
+                user_image = face_recognition.load_image_file(user.face_encoding.path)
                 user_face_encodings = face_recognition.face_encodings(user_image)
 
                 if user_face_encodings:
                     user_face_encoding = user_face_encodings[0]
                     match = face_recognition.compare_faces([user_face_encoding], face_encoding)
                     if match[0]:
-                        Attendance.objects.create(user=user, timestamp=timezone.now())
-                        return JsonResponse({'name': user.name, 'status': 'Attendance marked'})
+                        student = get_object_or_404(Student, user=user)
+                        campus = get_object_or_404(Campus, id=1)
+                        lat, lon = get_current_location()
+
+                        distance = haversine_(lat, lon, float(campus.latitude),
+                                              float(campus.longitude))
+
+                        if distance <= 100:
+                            attendance = Attendance.objects.create(student=student, latitude=lat,
+                                                                   longitude=lon, duration=0)
+                            AttendanceLog.objects.create(status='Punch In', attendance_id=attendance.id)
+                            return JsonResponse({'name': user.name, 'status': 'Attendance marked'})
+                        return JsonResponse({"status": "you are out of range"})
 
             return JsonResponse({'status': 'No match found'})
 
     return JsonResponse({'status': 'Invalid request'})
+
+
+
+class StudentsUnderTeacherViewSet(ModelViewSet):
+    queryset = Student.objects.all()
+    serializer_class = StudentSerializer
+    permission_classes = [TeacherBasedPermission]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(user__user_type="teacher")
+
+
+class StudentListViewSet(ModelViewSet):
+    queryset = Student.objects.all()
+    serializer_class = StudentSerializer
+

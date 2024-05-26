@@ -1,6 +1,10 @@
 from datetime import timezone
 
 from django.db import models
+from django.db.models import Q
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from home.model_mixins import BaseModel
 from users.models import User
 from datetime import date
@@ -167,3 +171,67 @@ class Leave(BaseModel):
 
     def __str__(self):
         return self.leave_type.title
+
+
+class AttendanceStatsView(APIView):
+    permission_classes = []
+
+    def get(self, request, *args, **kwargs):
+        today = date.today()
+
+        present_logs = AttendanceLog.objects.filter(
+            Q(status='Punch In') & Q(attendance__created_at__date=today)
+        ).distinct('attendance__student')
+        present_count = present_logs.count()
+
+        on_leave = Leave.objects.filter(
+            Q(start_date__lte=today) & Q(end_date__gte=today) & Q(approval_status='Approved')
+        ).distinct('student')
+        on_leave_count = on_leave.count()
+
+
+        total_students = Student.objects.count()
+        absent_count = total_students - present_count - on_leave_count
+
+        data = {
+            "present": present_count,
+            "absent": absent_count,
+            "on_leave": on_leave_count,
+        }
+        return Response(data)
+
+
+class StudentAttendanceStatsView(APIView):
+    # permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        student_id = kwargs.get('student_id')
+        try:
+            student = Student.objects.get(id=student_id)
+        except Student.DoesNotExist:
+            return Response({"message": "student not found"})
+
+        today = date.today()
+
+        present_logs = AttendanceLog.objects.filter(
+            Q(status='Punch In') & Q(attendance__student=student)
+        ).distinct('attendance__created_at')
+        present_count = present_logs.count()
+
+        on_leave = Leave.objects.filter(
+            Q(start_date__lte=today) & Q(end_date__gte=today) & Q(student=student) & Q(approval_status='Approved')
+        )
+        on_leave_count = on_leave.count()
+
+
+        total_days = (
+                    today - student.created_at.date()).days + 1
+        absent_count = total_days - present_count - on_leave_count
+
+        data = {
+            "present": present_count,
+            "absent": absent_count,
+            "on_leave": on_leave_count,
+        }
+
+        return Response(data)
